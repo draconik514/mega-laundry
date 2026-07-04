@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import StatusTimeline from '../components/StatusTimeline'
+import FeedbackModal from '../components/FeedbackModal'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
@@ -13,6 +14,8 @@ const CustomerTracking = () => {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [alreadyFeedback, setAlreadyFeedback] = useState(false)
 
   useEffect(() => {
     if (urlCode) {
@@ -32,6 +35,7 @@ const CustomerTracking = () => {
       const response = await api.get(`/customer/order/${searchCode.trim()}`)
       setOrder(response.data.order)
       setHistory(response.data.history || [])
+      setAlreadyFeedback(false)
     } catch {
       toast.error('Order tidak ditemukan')
       setOrder(null)
@@ -60,11 +64,11 @@ const CustomerTracking = () => {
       <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-              <span className="text-lg">🧺</span>
+            <div className="w-9 h-9 rounded-xl overflow-hidden">
+              <img src="/laundryfoto.jpg" alt="Mega Laundry" className="w-full h-full object-cover" />
             </div>
             <div>
-              <p className="font-bold text-gray-900 text-sm leading-tight">LaundryFlow</p>
+              <p className="font-bold text-gray-900 text-sm leading-tight">Mega Laundry</p>
               <p className="text-xs text-gray-400 leading-tight">Tracking Pesanan</p>
             </div>
           </div>
@@ -188,6 +192,23 @@ const CustomerTracking = () => {
                 </div>
               </div>
             )}
+
+            {/* Feedback */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
+              {alreadyFeedback ? (
+                <p className="text-sm text-gray-400">✅ Anda sudah memberikan feedback untuk order ini</p>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500 mb-3">Puas dengan layanan kami? Beri penilaian yuk!</p>
+                  <button
+                    onClick={() => setShowFeedback(true)}
+                    className="inline-flex items-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-semibold text-sm px-6 py-2.5 rounded-xl transition-colors"
+                  >
+                    ⭐ Beri Penilaian
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -199,6 +220,14 @@ const CustomerTracking = () => {
           </div>
         )}
       </div>
+
+      {showFeedback && (
+        <FeedbackModal
+          orderCode={order?.code}
+          customerName={order?.customer_name}
+          onClose={() => { setShowFeedback(false); setAlreadyFeedback(true) }}
+        />
+      )}
     </div>
   )
 }

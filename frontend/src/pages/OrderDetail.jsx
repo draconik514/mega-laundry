@@ -66,9 +66,9 @@ const OrderDetail = () => {
     
     let message = ''
     if (newStatus === 'completed') {
-      message = `✅ *Laundry Selesai!*\n\nHalo *${orderData.customer_name}*,\n\nLaundry Anda sudah selesai dan siap diambil! 🎉\n\n📋 *Detail Order:*\n• Kode: *${orderData.code}*\n• Layanan: ${orderData.service_name}\n• Berat: ${orderData.weight} kg\n• Total: *Rp${orderData.total_price?.toLocaleString('id-ID')}*\n\nTerima kasih telah menggunakan layanan LaundryFlow 🧺`
+      message = `✅ *Laundry Selesai!*\n\nHalo *${orderData.customer_name}*,\n\nLaundry Anda sudah selesai dan siap diambil! 🎉\n\n📋 *Detail Order:*\n• Kode: *${orderData.code}*\n• Layanan: ${orderData.service_name}\n• Berat: ${orderData.weight} kg\n• Total: *Rp${orderData.total_price?.toLocaleString('id-ID')}*\n\nTerima kasih telah menggunakan layanan Mega Laundry 🧺`
     } else if (newStatus === 'ready_for_delivery') {
-      message = `🚗 *Laundry Siap Diantar!*\n\nHalo *${orderData.customer_name}*,\n\nLaundry Anda sudah siap dan sedang dalam perjalanan ke lokasi Anda.\n\n📋 Kode Order: *${orderData.code}*\n\nTerima kasih telah menggunakan layanan LaundryFlow 🧺`
+      message = `📦 *Laundry Siap Diambil!*\n\nHalo *${orderData.customer_name}*,\n\nLaundry Anda sudah selesai diproses dan siap untuk diambil di toko kami.\n\n📋 Kode Order: *${orderData.code}*\n📍 Alamat: 5W43+J59, Jl. Untad I Bumi Roviega, Tondo, Kec. Palu Tim., Kota Palu\n\u23f0 Jam Buka: 08.00 \u2013 21.00 WIB\n\nTerima kasih telah menggunakan layanan Mega Laundry 🧺`
     } else if (newStatus === 'picked_up') {
       message = `🧺 *Laundry Sudah Dijemput!*\n\nHalo *${orderData.customer_name}*,\n\nLaundry Anda sudah kami jemput dan sedang diproses.\n\n📋 Kode Order: *${orderData.code}*\n\nCek status kapan saja di: ${window.location.origin}/customer/track/${orderData.code}`
     }
@@ -327,13 +327,7 @@ const OrderDetail = () => {
                   onClick={() => sendWhatsApp(order, 'ready_for_delivery')}
                   className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
                 >
-                  🚗 Siap Diantar
-                </button>
-                <button
-                  onClick={() => sendWhatsApp(order, 'picked_up')}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                >
-                  🧺 Sudah Dijemput
+                  📦 Siap Diambil
                 </button>
               </div>
             </div>

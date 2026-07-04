@@ -26,6 +26,7 @@ const Reports = () => {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [chartMode, setChartMode] = useState('daily')
 
   useEffect(() => {
     Promise.all([
@@ -391,23 +392,74 @@ const Reports = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Revenue chart */}
         <div className="card lg:col-span-2">
-          <div className="mb-6">
-            <h3 className="font-semibold text-gray-900">Pendapatan 30 Hari Terakhir</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Hanya dari order yang sudah selesai</p>
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">
+                {chartMode === 'daily' ? 'Pendapatan 30 Hari Terakhir' : 'Pendapatan Per Bulan'}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">Hanya dari order yang sudah selesai</p>
+            </div>
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setChartMode('daily')}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  chartMode === 'daily' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Harian
+              </button>
+              <button
+                onClick={() => setChartMode('monthly')}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  chartMode === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Bulanan
+              </button>
+            </div>
           </div>
           {report.dailyData.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Belum ada data pendapatan</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={report.dailyData} barSize={16}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v) => v.slice(5)} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} formatter={(v) => [fmt(v), 'Pendapatan']} />
-                <Bar dataKey="revenue" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+          ) : (() => {
+            const chartData = chartMode === 'daily'
+              ? report.dailyData
+              : Object.values(
+                  report.dailyData.reduce((acc, d) => {
+                    const month = d.date.slice(0, 7)
+                    if (!acc[month]) acc[month] = { date: month, orders: 0, revenue: 0 }
+                    acc[month].orders += d.orders
+                    acc[month].revenue += Number(d.revenue)
+                    return acc
+                  }, {})
+                )
+            return (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={chartData} barSize={chartMode === 'monthly' ? 32 : 16}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    tickFormatter={(v) => chartMode === 'daily'
+                      ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                      : new Date(v + '-01').toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
+                    }
+                  />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                    formatter={(v) => [fmt(v), 'Pendapatan']}
+                    labelFormatter={(v) => chartMode === 'daily'
+                      ? new Date(v).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
+                      : new Date(v + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+                    }
+                  />
+                  <Bar dataKey="revenue" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          })()}
         </div>
 
         {/* Pie chart */}

@@ -31,10 +31,10 @@ const Login = () => {
       {/* Left panel - branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex-col justify-between p-12">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-            <span className="text-2xl">🧺</span>
+          <div className="w-10 h-10 rounded-2xl overflow-hidden">
+            <img src="/laundryfoto.jpg" alt="Mega Laundry" className="w-full h-full object-cover" />
           </div>
-          <span className="text-white font-bold text-xl">LaundryFlow</span>
+          <span className="text-white font-bold text-xl">Mega Laundry</span>
         </div>
         <div>
           <h2 className="text-4xl font-bold text-white leading-tight mb-4">
@@ -52,17 +52,17 @@ const Login = () => {
             ))}
           </div>
         </div>
-        <p className="text-blue-300 text-sm">© 2024 LaundryFlow. All rights reserved.</p>
+        <p className="text-blue-300 text-sm">© 2024 Mega Laundry. All rights reserved.</p>
       </div>
 
       {/* Right panel - login only */}
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center">
-              <span className="text-xl">🧺</span>
+            <div className="w-10 h-10 rounded-2xl overflow-hidden">
+              <img src="/laundryfoto.jpg" alt="Mega Laundry" className="w-full h-full object-cover" />
             </div>
-            <span className="font-bold text-xl text-gray-900">LaundryFlow</span>
+            <span className="font-bold text-xl text-gray-900">Mega Laundry</span>
           </div>
 
           <div className="mb-8">

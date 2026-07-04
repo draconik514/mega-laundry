@@ -9,6 +9,8 @@ import Services from '../pages/Services'
 import Customer from '../pages/Customer'
 import CustomerTracking from '../pages/CustomerTracking'
 import Reports from '../pages/Reports'
+import Profile from '../pages/Profile'
+import Feedbacks from '../pages/Feedbacks'
 import Layout from '../components/Layout'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -72,6 +74,22 @@ const Router = () => {
         <PrivateRoute>
           <Layout>
             <Reports />
+          </Layout>
+        </PrivateRoute>
+      } />
+
+      <Route path="/profile" element={
+        <PrivateRoute>
+          <Layout>
+            <Profile />
+          </Layout>
+        </PrivateRoute>
+      } />
+
+      <Route path="/feedbacks" element={
+        <PrivateRoute>
+          <Layout>
+            <Feedbacks />
           </Layout>
         </PrivateRoute>
       } />

@@ -39,6 +39,9 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 		auth.POST("/register", handlers.Register(db))
 	}
 
+	// Public feedback
+	router.POST("/api/feedback", handlers.CreateFeedback(db))
+
 	// Public customer routes
 	customer := router.Group("/api/customer")
 	{
@@ -54,6 +57,9 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 	api := router.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
+		// Profile
+		api.PUT("/profile", handlers.UpdateProfile(db))
+
 		// Dashboard
 		api.GET("/dashboard", handlers.GetDashboardStats(db))
 
@@ -68,6 +74,9 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 		api.POST("/services", handlers.CreateService(db))
 		api.PUT("/services/:id", handlers.UpdateService(db))
 		api.DELETE("/services/:id", handlers.DeleteService(db))
+
+		// Feedbacks
+		api.GET("/feedbacks", handlers.GetFeedbacks(db))
 
 		// Reports
 		api.GET("/reports/financial", handlers.GetFinancialReport(db))

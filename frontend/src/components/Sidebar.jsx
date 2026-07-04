@@ -7,12 +7,14 @@ import {
   CurrencyDollarIcon,
   ChartBarIcon,
   ArrowRightOnRectangleIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline'
 import {
   HomeIcon as HomeSolid,
   ClipboardDocumentListIcon as ClipboardSolid,
   CurrencyDollarIcon as CurrencySolid,
   ChartBarIcon as ChartSolid,
+  ChatBubbleLeftRightIcon as ChatSolid,
 } from '@heroicons/react/24/solid'
 
 const navigation = [
@@ -20,6 +22,7 @@ const navigation = [
   { name: 'Pesanan', href: '/orders', icon: ClipboardDocumentListIcon, activeIcon: ClipboardSolid },
   { name: 'Layanan', href: '/services', icon: CurrencyDollarIcon, activeIcon: CurrencySolid },
   { name: 'Laporan', href: '/reports', icon: ChartBarIcon, activeIcon: ChartSolid },
+  { name: 'Feedback', href: '/feedbacks', icon: ChatBubbleLeftRightIcon, activeIcon: ChatSolid },
 ]
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
@@ -51,11 +54,11 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       `}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-            <span className="text-xl">🧺</span>
+          <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg">
+            <img src="/laundryfoto.jpg" alt="Mega Laundry" className="w-full h-full object-cover" />
           </div>
           <div>
-            <p className="text-base font-bold text-gray-900 leading-tight">LaundryFlow</p>
+            <p className="text-base font-bold text-gray-900 leading-tight">Mega Laundry</p>
             <p className="text-xs text-gray-400 leading-tight">Manajemen Laundry</p>
           </div>
         </div>
@@ -82,7 +85,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
 
         {/* User + Logout */}
         <div className="px-3 py-4 border-t border-gray-100 space-y-2">
-          <div className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 rounded-xl">
+          <Link to="/profile" onClick={() => setIsOpen(false)} className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
               {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </div>
@@ -90,7 +93,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
               <p className="text-sm font-semibold text-gray-900 truncate">{user?.name}</p>
               <p className="text-xs text-gray-400 capitalize">{user?.role}</p>
             </div>
-          </div>
+          </Link>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-all duration-150"

@@ -38,6 +38,11 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 			req.OrderSource = "walk_in"
 		}
 
+		initialStatus := "pending_pickup"
+		if req.OrderSource == "walk_in" {
+			initialStatus = "washing"
+		}
+
 		// Cari customer yang sudah ada berdasarkan nomor HP, kalau tidak ada buat baru
 		var customerID int64
 		if req.CustomerPhone != "" {
@@ -71,7 +76,7 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 
 		orderResult, err := db.Exec(
 			`INSERT INTO orders (code, customer_id, service_id, weight, total_price, status, note, order_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			code, customerID, req.ServiceID, req.Weight, totalPrice, "pending_pickup", req.Note, req.OrderSource,
+			code, customerID, req.ServiceID, req.Weight, totalPrice, initialStatus, req.Note, req.OrderSource,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat pesanan"})
@@ -79,7 +84,7 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 		}
 		orderID, _ := orderResult.LastInsertId()
 
-		db.Exec("INSERT INTO status_histories (order_id, status) VALUES (?, ?)", orderID, "pending_pickup")
+		db.Exec("INSERT INTO status_histories (order_id, status) VALUES (?, ?)", orderID, initialStatus)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"message":     "Pesanan berhasil dibuat",

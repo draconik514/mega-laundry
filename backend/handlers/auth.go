@@ -50,6 +50,79 @@ func Register(db *sql.DB) gin.HandlerFunc {
     }
 }
 
+func UpdateProfile(db *sql.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        rawID, _ := c.Get("user_id")
+        userID := int64(rawID.(float64))
+
+        var req struct {
+            Name        string `json:"name"`
+            Email       string `json:"email"`
+            OldPassword string `json:"old_password"`
+            NewPassword string `json:"new_password"`
+        }
+        if err := c.ShouldBindJSON(&req); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+
+        var current struct {
+            Name     string
+            Email    string
+            Password string
+        }
+        err := db.QueryRow("SELECT name, email, password FROM users WHERE id = ?", userID).
+            Scan(&current.Name, &current.Email, &current.Password)
+        if err != nil {
+            c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+            return
+        }
+
+        name := current.Name
+        email := current.Email
+        if req.Name != "" {
+            name = req.Name
+        }
+        if req.Email != "" {
+            email = req.Email
+        }
+
+        if req.NewPassword != "" {
+            if err := bcrypt.CompareHashAndPassword([]byte(current.Password), []byte(req.OldPassword)); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Password lama salah"})
+                return
+            }
+            hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+            if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+                return
+            }
+            db.Exec("UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?", name, email, string(hashed), userID)
+        } else {
+            db.Exec("UPDATE users SET name = ?, email = ? WHERE id = ?", name, email, userID)
+        }
+
+        token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+            "id":   userID,
+            "name": name,
+            "role": c.GetString("user_role"),
+            "exp":  time.Now().Add(time.Hour * 24).Unix(),
+        })
+        tokenString, _ := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+
+        c.JSON(http.StatusOK, gin.H{
+            "message": "Profil berhasil diperbarui",
+            "token":   tokenString,
+            "user": gin.H{
+                "id":    int(userID),
+                "name":  name,
+                "email": email,
+                "role":  c.GetString("user_role"),
+            },
+        })
+    }
+}
+
 func Login(db *sql.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         var req LoginRequest
