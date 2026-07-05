@@ -31,7 +31,7 @@ const Reports = () => {
   useEffect(() => {
     Promise.all([
       api.get('/reports/financial'),
-      api.get('/orders')
+      api.get('/orders?page=1')
     ]).then(([{ data: d }, { data: o }]) => {
       setReport({
         dailyRevenue: d.daily_revenue ?? 0,
@@ -48,7 +48,7 @@ const Reports = () => {
         })),
         dailyData: d.daily_data ?? []
       })
-      setOrders(o || [])
+      setOrders(o.data || [])
     })
     .catch(() => toast.error('Gagal memuat laporan'))
     .finally(() => setLoading(false))
