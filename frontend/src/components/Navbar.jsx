@@ -22,39 +22,16 @@ const Navbar = ({ sidebarOpen, setSidebarOpen }) => {
   const fetchNotifications = async () => {
     setLoading(true)
     try {
-      const res = await api.get('/orders')
+      const res = await api.get('/notifications')
       const orders = res.data || []
-
-      const newOrders = orders
-        .filter(o => o.status === 'pending_pickup' || o.status === 'washing')
-        .slice(0, 5)
-        .map(o => ({
-          id: o.id,
-          code: o.code,
-          type: 'new',
-          message: `Order ${o.code} — ${o.customer_name}`,
-          sub: `Status: ${statusLabel(o.status)}`,
-          time: o.created_at,
-        }))
-
-      const lateOrders = orders
-        .filter(o => {
-          if (['completed', 'cancelled'].includes(o.status)) return false
-          const deadline = new Date(o.created_at).getTime() + o.estimated_day * 86400000
-          return Date.now() > deadline
-        })
-        .slice(0, 5)
-        .map(o => ({
-          id: o.id,
-          code: o.code,
-          type: 'late',
-          message: `Order ${o.code} terlambat!`,
-          sub: `${o.customer_name} — ${o.service_name}`,
-          time: o.created_at,
-        }))
-
-      // late order prioritas di atas
-      setNotifications([...lateOrders, ...newOrders])
+      setNotifications(orders.map(o => ({
+        id: o.id,
+        code: o.code,
+        type: o.is_late ? 'late' : 'new',
+        message: o.is_late ? `Order ${o.code} terlambat!` : `Order ${o.code} — ${o.customer_name}`,
+        sub: o.is_late ? `${o.customer_name} — ${o.service_name}` : `Status: ${statusLabel(o.status)}`,
+        time: o.created_at,
+      })))
     } catch {
     } finally {
       setLoading(false)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+    "context"
     "database/sql"
     "net/http"
     "os"
@@ -36,7 +37,10 @@ func Register(db *sql.DB) gin.HandlerFunc {
             return
         }
 
-        result, err := db.Exec(
+        ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+        defer cancel()
+
+        result, err := db.ExecContext(ctx,
             "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
             req.Name, req.Email, string(hashedPassword),
         )
@@ -71,7 +75,10 @@ func UpdateProfile(db *sql.DB) gin.HandlerFunc {
             Email    string
             Password string
         }
-        err := db.QueryRow("SELECT name, email, password FROM users WHERE id = ?", userID).
+        ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+        defer cancel()
+
+        err := db.QueryRowContext(ctx, "SELECT name, email, password FROM users WHERE id = ?", userID).
             Scan(&current.Name, &current.Email, &current.Password)
         if err != nil {
             c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -97,9 +104,9 @@ func UpdateProfile(db *sql.DB) gin.HandlerFunc {
                 c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
                 return
             }
-            db.Exec("UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?", name, email, string(hashed), userID)
+            db.ExecContext(ctx, "UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?", name, email, string(hashed), userID)
         } else {
-            db.Exec("UPDATE users SET name = ?, email = ? WHERE id = ?", name, email, userID)
+            db.ExecContext(ctx, "UPDATE users SET name = ?, email = ? WHERE id = ?", name, email, userID)
         }
 
         token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -139,7 +146,10 @@ func Login(db *sql.DB) gin.HandlerFunc {
             Role     string
         }
 
-        err := db.QueryRow(
+        ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+        defer cancel()
+
+        err := db.QueryRowContext(ctx,
             "SELECT id, name, email, password, role FROM users WHERE email = ?",
             req.Email,
         ).Scan(&user.ID, &user.Name, &user.Email, &user.Password, &user.Role)

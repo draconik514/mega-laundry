@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+const dbTimeout = 5 * time.Second
 
 type UpdateOrderStatusRequest struct {
 	Status string `json:"status" binding:"required"`
@@ -26,6 +29,23 @@ type AdminOrderRequest struct {
 	OrderSource     string  `json:"order_source"`
 }
 
+type OrderResponse struct {
+	ID              int       `json:"id"`
+	Code            string    `json:"code"`
+	CustomerName    string    `json:"customer_name"`
+	CustomerPhone   string    `json:"customer_phone"`
+	CustomerAddress string    `json:"customer_address"`
+	Weight          float64   `json:"weight"`
+	TotalPrice      float64   `json:"total_price"`
+	Status          string    `json:"status"`
+	Note            string    `json:"note"`
+	OrderSource     string    `json:"order_source"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	ServiceName     string    `json:"service_name"`
+	EstimatedDay    int       `json:"estimated_day"`
+}
+
 func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req AdminOrderRequest
@@ -37,24 +57,24 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 		if req.OrderSource == "" {
 			req.OrderSource = "walk_in"
 		}
-
 		initialStatus := "pending_pickup"
 		if req.OrderSource == "walk_in" {
 			initialStatus = "washing"
 		}
 
-		// Cari customer yang sudah ada berdasarkan nomor HP, kalau tidak ada buat baru
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
+
 		var customerID int64
 		if req.CustomerPhone != "" {
 			var existingID int
-			err := db.QueryRow(`SELECT id FROM customers WHERE phone = ?`, req.CustomerPhone).Scan(&existingID)
-			if err == nil {
+			if err := db.QueryRowContext(ctx, `SELECT id FROM customers WHERE phone = ?`, req.CustomerPhone).Scan(&existingID); err == nil {
 				customerID = int64(existingID)
 			}
 		}
 
 		if customerID == 0 {
-			result, err := db.Exec(
+			result, err := db.ExecContext(ctx,
 				`INSERT INTO customers (name, phone, address) VALUES (?, ?, ?)`,
 				req.CustomerName, req.CustomerPhone, req.CustomerAddress,
 			)
@@ -66,7 +86,7 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 		}
 
 		var pricePerKg float64
-		if err := db.QueryRow("SELECT price_per_kg FROM services WHERE id = ?", req.ServiceID).Scan(&pricePerKg); err != nil {
+		if err := db.QueryRowContext(ctx, "SELECT price_per_kg FROM services WHERE id = ?", req.ServiceID).Scan(&pricePerKg); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Layanan tidak ditemukan"})
 			return
 		}
@@ -74,7 +94,7 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 		totalPrice := pricePerKg * req.Weight
 		code := fmt.Sprintf("LW%s", strings.ToUpper(uuid.New().String()[:8]))
 
-		orderResult, err := db.Exec(
+		orderResult, err := db.ExecContext(ctx,
 			`INSERT INTO orders (code, customer_id, service_id, weight, total_price, status, note, order_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			code, customerID, req.ServiceID, req.Weight, totalPrice, initialStatus, req.Note, req.OrderSource,
 		)
@@ -84,7 +104,7 @@ func CreateAdminOrder(db *sql.DB) gin.HandlerFunc {
 		}
 		orderID, _ := orderResult.LastInsertId()
 
-		db.Exec("INSERT INTO status_histories (order_id, status) VALUES (?, ?)", orderID, initialStatus)
+		db.ExecContext(ctx, "INSERT INTO status_histories (order_id, status) VALUES (?, ?)", orderID, initialStatus)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"message":     "Pesanan berhasil dibuat",
@@ -100,79 +120,124 @@ func GetOrders(db *sql.DB) gin.HandlerFunc {
 		status := c.Query("status")
 		date := c.Query("date")
 		search := c.Query("search")
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		if page < 1 {
+			page = 1
+		}
+		const pageSize = 50
+		offset := (page - 1) * pageSize
 
-		query := `
-            SELECT o.id, o.code, c.name, c.phone, c.address, 
-                   o.weight, o.total_price, o.status, o.note, o.order_source,
-                   o.created_at, o.updated_at,
-                   s.name as service_name, s.estimated_day
-            FROM orders o 
-            JOIN customers c ON o.customer_id = c.id 
-            JOIN services s ON o.service_id = s.id 
-            WHERE 1=1
-        `
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
+
+		baseWhere := " FROM orders o JOIN customers c ON o.customer_id = c.id JOIN services s ON o.service_id = s.id WHERE 1=1"
 		args := []interface{}{}
 
 		if status != "" && status != "all" {
-			query += " AND o.status = ?"
+			baseWhere += " AND o.status = ?"
 			args = append(args, status)
 		}
 		if date != "" {
-			query += " AND DATE(o.created_at) = ?"
+			baseWhere += " AND DATE(o.created_at) = ?"
 			args = append(args, date)
 		}
 		if search != "" {
-			query += " AND c.name LIKE ?"
-			args = append(args, "%"+search+"%")
+			baseWhere += " AND (c.name LIKE ? OR o.code LIKE ?)"
+			args = append(args, "%"+search+"%", "%"+search+"%")
 		}
 
-		query += " ORDER BY o.created_at DESC"
+		var total int
+		db.QueryRowContext(ctx, "SELECT COUNT(*) "+baseWhere, args...).Scan(&total)
 
-		rows, err := db.Query(query, args...)
+		query := `SELECT o.id, o.code, c.name, c.phone, c.address,
+				   o.weight, o.total_price, o.status, o.note, o.order_source,
+				   o.created_at, o.updated_at, s.name, s.estimated_day` +
+			baseWhere + " ORDER BY o.created_at DESC LIMIT ? OFFSET ?"
+		args = append(args, pageSize, offset)
+
+		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		defer rows.Close()
 
-		type OrderResponse struct {
-			ID              int       `json:"id"`
-			Code            string    `json:"code"`
-			CustomerName    string    `json:"customer_name"`
-			CustomerPhone   string    `json:"customer_phone"`
-			CustomerAddress string    `json:"customer_address"`
-			Weight          float64   `json:"weight"`
-			TotalPrice      float64   `json:"total_price"`
-			Status          string    `json:"status"`
-			Note            string    `json:"note"`
-			OrderSource     string    `json:"order_source"`
-			CreatedAt       time.Time `json:"created_at"`
-			UpdatedAt       time.Time `json:"updated_at"`
-			ServiceName     string    `json:"service_name"`
-			EstimatedDay    int       `json:"estimated_day"`
-		}
-
 		orders := []OrderResponse{}
 		for rows.Next() {
 			var o OrderResponse
-			err := rows.Scan(
+			if err := rows.Scan(
 				&o.ID, &o.Code, &o.CustomerName, &o.CustomerPhone, &o.CustomerAddress,
 				&o.Weight, &o.TotalPrice, &o.Status, &o.Note, &o.OrderSource,
 				&o.CreatedAt, &o.UpdatedAt, &o.ServiceName, &o.EstimatedDay,
-			)
-			if err != nil {
+			); err != nil {
 				continue
 			}
 			orders = append(orders, o)
 		}
 
-		c.JSON(http.StatusOK, orders)
+		totalPages := (total + pageSize - 1) / pageSize
+		c.JSON(http.StatusOK, gin.H{
+			"data":        orders,
+			"total":       total,
+			"page":        page,
+			"total_pages": totalPages,
+		})
+	}
+}
+
+// GetNotifications — endpoint ringan khusus bell, max 10 baris
+func GetNotifications(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		type NotifOrder struct {
+			ID           int       `json:"id"`
+			Code         string    `json:"code"`
+			CustomerName string    `json:"customer_name"`
+			Status       string    `json:"status"`
+			ServiceName  string    `json:"service_name"`
+			EstimatedDay int       `json:"estimated_day"`
+			CreatedAt    time.Time `json:"created_at"`
+			IsLate       bool      `json:"is_late"`
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
+
+		rows, err := db.QueryContext(ctx, `
+			SELECT o.id, o.code, c.name, o.status, s.name, s.estimated_day, o.created_at,
+				CASE WHEN o.created_at < datetime('now', '-' || s.estimated_day || ' days') THEN 1 ELSE 0 END as is_late
+			FROM orders o
+			JOIN customers c ON o.customer_id = c.id
+			JOIN services s ON o.service_id = s.id
+			WHERE o.status NOT IN ('completed', 'cancelled')
+			ORDER BY is_late DESC, o.created_at DESC
+			LIMIT 10
+		`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		notifs := []NotifOrder{}
+		for rows.Next() {
+			var n NotifOrder
+			var isLate int
+			if err := rows.Scan(&n.ID, &n.Code, &n.CustomerName, &n.Status, &n.ServiceName, &n.EstimatedDay, &n.CreatedAt, &isLate); err != nil {
+				continue
+			}
+			n.IsLate = isLate == 1
+			notifs = append(notifs, n)
+		}
+		c.JSON(http.StatusOK, notifs)
 	}
 }
 
 func GetOrderByCode(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		code := strings.TrimSpace(c.Param("code"))
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
 
 		var order struct {
 			ID              int       `json:"id"`
@@ -192,30 +257,29 @@ func GetOrderByCode(db *sql.DB) gin.HandlerFunc {
 			EstimatedDay    int       `json:"estimated_day"`
 		}
 
-		err := db.QueryRow(`
-            SELECT o.id, o.code, c.name, c.phone, c.address, 
+		err := db.QueryRowContext(ctx, `
+            SELECT o.id, o.code, c.name, c.phone, c.address,
                    o.weight, o.total_price, o.status, o.note, o.order_source,
                    o.created_at, o.updated_at,
                    s.id, s.name, s.estimated_day
-            FROM orders o 
-            JOIN customers c ON o.customer_id = c.id 
-            JOIN services s ON o.service_id = s.id 
+            FROM orders o
+            JOIN customers c ON o.customer_id = c.id
+            JOIN services s ON o.service_id = s.id
             WHERE o.code = ?
         `, code).Scan(
 			&order.ID, &order.Code, &order.CustomerName, &order.CustomerPhone, &order.CustomerAddress,
 			&order.Weight, &order.TotalPrice, &order.Status, &order.Note, &order.OrderSource,
 			&order.CreatedAt, &order.UpdatedAt, &order.ServiceID, &order.ServiceName, &order.EstimatedDay,
 		)
-
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 			return
 		}
 
-		rows, err := db.Query(`
-            SELECT status, updated_at 
-            FROM status_histories 
-            WHERE order_id = ? 
+		rows, err := db.QueryContext(ctx, `
+            SELECT status, updated_at
+            FROM status_histories
+            WHERE order_id = ?
             ORDER BY updated_at ASC
         `, order.ID)
 		if err == nil {
@@ -247,7 +311,18 @@ func UpdateOrderStatus(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec(
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
+
+		// Cek apakah status sudah sama — hindari update duplikat
+		var currentStatus string
+		db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id = ?", id).Scan(&currentStatus)
+		if currentStatus == req.Status {
+			c.JSON(http.StatusOK, gin.H{"message": "Status tidak berubah"})
+			return
+		}
+
+		_, err := db.ExecContext(ctx,
 			"UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 			req.Status, id,
 		)
@@ -256,7 +331,7 @@ func UpdateOrderStatus(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		db.Exec("INSERT INTO status_histories (order_id, status) VALUES (?, ?)", id, req.Status)
+		db.ExecContext(ctx, "INSERT INTO status_histories (order_id, status) VALUES (?, ?)", id, req.Status)
 
 		c.JSON(http.StatusOK, gin.H{"message": "Status updated successfully"})
 	}
@@ -270,10 +345,12 @@ func DeleteOrder(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Hapus status histories dulu (foreign key constraint)
-		db.Exec("DELETE FROM status_histories WHERE order_id = ?", id)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
 
-		_, err := db.Exec("DELETE FROM orders WHERE id = ?", id)
+		db.ExecContext(ctx, "DELETE FROM status_histories WHERE order_id = ?", id)
+
+		_, err := db.ExecContext(ctx, "DELETE FROM orders WHERE id = ?", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus pesanan"})
 			return

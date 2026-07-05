@@ -5,6 +5,7 @@ import (
     "fmt"
     "log"
     "os"
+    "time"
 
     _ "github.com/tursodatabase/libsql-client-go/libsql"
 )
@@ -19,6 +20,10 @@ func InitDB() {
     if err != nil {
         log.Fatal("Failed to connect to database:", err)
     }
+
+    DB.SetMaxOpenConns(10)
+    DB.SetMaxIdleConns(5)
+    DB.SetConnMaxLifetime(30 * time.Minute)
 
     if err = DB.Ping(); err != nil {
         log.Fatal("Failed to ping database:", err)
@@ -79,6 +84,11 @@ func createTables() {
             message TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
+        `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`,
+        `CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)`,
+        `CREATE INDEX IF NOT EXISTS idx_orders_tracking_code ON orders(code)`,
+        `CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_status_histories_order_id ON status_histories(order_id)`,
     }
 
     for _, query := range queries {

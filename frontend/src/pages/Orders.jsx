@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, PlusIcon, ClipboardDocumentCheckIcon, ArrowDownTrayIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, PlusIcon, ClipboardDocumentCheckIcon, ArrowDownTrayIcon, CalendarDaysIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import OrderTable from '../components/OrderTable'
 import api from '../services/api'
 import toast from 'react-hot-toast'
@@ -37,10 +37,9 @@ const emptyForm = {
   service_id: '', weight: '', note: '', order_source: 'walk_in'
 }
 
-// Hitung Senin dan Minggu dari minggu yang dipilih
 const getWeekRange = (offset = 0) => {
   const now = new Date()
-  const day = now.getDay() // 0=minggu, 1=senin ...
+  const day = now.getDay()
   const diffToMonday = (day === 0 ? -6 : 1 - day) + offset * 7
   const monday = new Date(now)
   monday.setDate(now.getDate() + diffToMonday)
@@ -66,6 +65,9 @@ const Orders = () => {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [date, setDate] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
 
   // Modal buat pesanan
   const [showModal, setShowModal] = useState(false)
@@ -79,22 +81,29 @@ const Orders = () => {
   const [weekOffset, setWeekOffset] = useState(0)
   const [exporting, setExporting] = useState(false)
 
-  // Debounce search
+  // Debounce search — reset ke page 1 saat search berubah
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput), 400)
+    const t = setTimeout(() => { setSearch(searchInput); setPage(1) }, 400)
     return () => clearTimeout(t)
   }, [searchInput])
 
-  useEffect(() => { fetchOrders() }, [search, status, date])
+  // Reset page saat filter berubah
+  useEffect(() => { setPage(1) }, [status, date])
+
+  useEffect(() => { fetchOrders() }, [search, status, date, page])
 
   const fetchOrders = async () => {
+    setLoading(true)
     try {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
       if (status !== 'all') params.append('status', status)
       if (date) params.append('date', date)
+      params.append('page', page)
       const { data } = await api.get(`/orders?${params}`)
-      setOrders(data || [])
+      setOrders(data.data || [])
+      setTotalPages(data.total_pages || 1)
+      setTotalCount(data.total || 0)
     } catch {
       toast.error('Gagal memuat pesanan')
     } finally {
@@ -145,37 +154,35 @@ const Orders = () => {
     }
   }
 
-  // ── Export CSV ──
+  // ── Export CSV — filter per hari di backend, bukan ambil semua ──
   const handleExport = async () => {
     setExporting(true)
     try {
       const { monday, sunday } = getWeekRange(weekOffset)
+      const allOrders = []
 
-      // Ambil semua order dalam rentang minggu ini
-      const params = new URLSearchParams()
-      const { data } = await api.get(`/orders?${params}`)
-      const allOrders = data || []
+      // Ambil per hari agar tidak bypass pagination
+      for (let d = new Date(monday); d <= sunday; d.setDate(d.getDate() + 1)) {
+        const p = new URLSearchParams()
+        p.append('date', formatDateShort(new Date(d)))
+        p.append('page', '1')
+        const { data } = await api.get(`/orders?${p}`)
+        if (data.data?.length) allOrders.push(...data.data)
+      }
 
-      // Filter sesuai rentang minggu
-      const weekly = allOrders.filter(o => {
-        const d = new Date(o.created_at)
-        return d >= monday && d <= sunday
-      })
-
-      if (weekly.length === 0) {
+      if (allOrders.length === 0) {
         toast.error('Tidak ada pesanan di minggu ini')
         setExporting(false)
         return
       }
 
-      // Buat CSV
       const headers = [
         'Kode', 'Nama Pelanggan', 'No. WhatsApp', 'Alamat',
         'Layanan', 'Berat (kg)', 'Total Harga (Rp)',
         'Status', 'Sumber', 'Tanggal Order'
       ]
 
-      const rows = weekly.map(o => [
+      const rows = allOrders.map(o => [
         o.code,
         o.customer_name,
         o.customer_phone || '-',
@@ -188,23 +195,20 @@ const Orders = () => {
         new Date(o.created_at).toLocaleString('id-ID')
       ])
 
-      // Hitung total
-      const totalPendapatan = weekly.filter(o => o.status === 'completed').reduce((s, o) => s + o.total_price, 0)
-      const totalOrder = weekly.length
-      const selesai = weekly.filter(o => o.status === 'completed').length
+      const totalPendapatan = allOrders.filter(o => o.status === 'completed').reduce((s, o) => s + o.total_price, 0)
+      const selesai = allOrders.filter(o => o.status === 'completed').length
 
-      // Tambah summary di bawah
       const summary = [
         [],
         ['RINGKASAN MINGGU'],
         [`Periode: ${formatDate(monday)} - ${formatDate(sunday)}`],
-        [`Total Pesanan: ${totalOrder}`],
+        [`Total Pesanan: ${allOrders.length}`],
         [`Pesanan Selesai: ${selesai}`],
         [`Total Pendapatan: Rp${totalPendapatan.toLocaleString('id-ID')}`],
       ]
 
       const csvContent = [
-        [`LAPORAN PESANAN MINGGUAN`],
+        ['LAPORAN PESANAN MINGGUAN'],
         [`Periode: ${formatDate(monday)} s/d ${formatDate(sunday)}`],
         [],
         headers,
@@ -214,7 +218,6 @@ const Orders = () => {
         .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
         .join('\n')
 
-      // Download file
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -225,7 +228,7 @@ const Orders = () => {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      toast.success(`${weekly.length} pesanan berhasil diekspor!`)
+      toast.success(`${allOrders.length} pesanan berhasil diekspor!`)
       setShowExport(false)
     } catch {
       toast.error('Gagal mengekspor data')
@@ -275,7 +278,7 @@ const Orders = () => {
             <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Cari nama pelanggan..."
+              placeholder="Cari nama pelanggan atau kode..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="input pl-10"
@@ -298,7 +301,7 @@ const Orders = () => {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-gray-500">
-            {loading ? 'Memuat...' : `${orders.length} pesanan ditemukan`}
+            {loading ? 'Memuat...' : `${totalCount} pesanan ditemukan`}
           </p>
         </div>
         {loading ? (
@@ -307,6 +310,43 @@ const Orders = () => {
           </div>
         ) : (
           <OrderTable orders={orders} />
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <p className="text-sm text-gray-400">
+              Halaman {page} dari {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeftIcon className="w-4 h-4 text-gray-600" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = totalPages <= 5 ? i + 1 : Math.max(1, Math.min(page - 2, totalPages - 4)) + i
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`w-8 h-8 rounded-xl text-sm font-medium transition-colors ${page === p ? 'bg-blue-600 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRightIcon className="w-4 h-4 text-gray-600" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -326,7 +366,6 @@ const Orders = () => {
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Pilih minggu */}
               <div>
                 <label className="label flex items-center gap-1.5">
                   <CalendarDaysIcon className="w-4 h-4 text-gray-400" />
@@ -358,7 +397,6 @@ const Orders = () => {
                 </div>
               </div>
 
-              {/* Info */}
               <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">File akan berisi:</p>
                 {[

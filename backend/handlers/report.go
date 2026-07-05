@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 
@@ -33,55 +34,46 @@ type DailyData struct {
 
 func GetFinancialReport(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), dbTimeout)
+		defer cancel()
+
 		report := FinancialReport{}
 
-		// Daily revenue - SQLite
-		db.QueryRow(`
-            SELECT COALESCE(SUM(total_price), 0) 
-            FROM orders 
-            WHERE DATE(created_at) = DATE('now') 
-            AND status = 'completed'
-        `).Scan(&report.DailyRevenue)
+		db.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(total_price), 0) FROM orders
+			WHERE DATE(created_at) = DATE('now') AND status = 'completed'
+		`).Scan(&report.DailyRevenue)
 
-		// Monthly revenue - SQLite
-		db.QueryRow(`
-            SELECT COALESCE(SUM(total_price), 0) 
-            FROM orders 
-            WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
-            AND status = 'completed'
-        `).Scan(&report.MonthlyRevenue)
+		db.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(total_price), 0) FROM orders
+			WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') AND status = 'completed'
+		`).Scan(&report.MonthlyRevenue)
 
-		// Total revenue
-		db.QueryRow(`
-            SELECT COALESCE(SUM(total_price), 0) 
-            FROM orders 
-            WHERE status = 'completed'
-        `).Scan(&report.TotalRevenue)
+		db.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(total_price), 0) FROM orders WHERE status = 'completed'
+		`).Scan(&report.TotalRevenue)
 
-		db.QueryRow(`SELECT COUNT(*) FROM orders`).Scan(&report.TotalOrders)
+		db.QueryRowContext(ctx, `SELECT COUNT(*) FROM orders`).Scan(&report.TotalOrders)
 
-		// Daily orders
-		db.QueryRow(`
-            SELECT COUNT(*) FROM orders WHERE DATE(created_at) = DATE('now')
-        `).Scan(&report.DailyOrders)
+		db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM orders WHERE DATE(created_at) = DATE('now')
+		`).Scan(&report.DailyOrders)
 
-		// Monthly orders
-		db.QueryRow(`
-            SELECT COUNT(*) FROM orders 
-            WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
-        `).Scan(&report.MonthlyOrders)
+		db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM orders
+			WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+		`).Scan(&report.MonthlyOrders)
 
 		if report.TotalOrders > 0 {
 			report.AverageOrder = report.TotalRevenue / float64(report.TotalOrders)
 		}
 
-		// Revenue by service
-		rows, err := db.Query(`
-            SELECT s.name, COUNT(o.id), COALESCE(SUM(o.total_price), 0)
-            FROM services s
-            LEFT JOIN orders o ON s.id = o.service_id AND o.status = 'completed'
-            GROUP BY s.name
-        `)
+		rows, err := db.QueryContext(ctx, `
+			SELECT s.name, COUNT(o.id), COALESCE(SUM(o.total_price), 0)
+			FROM services s
+			LEFT JOIN orders o ON s.id = o.service_id AND o.status = 'completed'
+			GROUP BY s.name
+		`)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -91,14 +83,13 @@ func GetFinancialReport(db *sql.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Last 30 days - SQLite
-		rows, err = db.Query(`
-            SELECT DATE(created_at) as date, COUNT(*) as orders, COALESCE(SUM(total_price), 0) as revenue
-            FROM orders
-            WHERE created_at >= date('now', '-29 days')
-            GROUP BY DATE(created_at)
-            ORDER BY date
-        `)
+		rows, err = db.QueryContext(ctx, `
+			SELECT DATE(created_at) as date, COUNT(*) as orders, COALESCE(SUM(total_price), 0) as revenue
+			FROM orders
+			WHERE created_at >= date('now', '-29 days')
+			GROUP BY DATE(created_at)
+			ORDER BY date
+		`)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {

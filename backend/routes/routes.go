@@ -64,6 +64,7 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 		api.GET("/dashboard", handlers.GetDashboardStats(db))
 
 		// Orders
+		api.GET("/notifications", handlers.GetNotifications(db))
 		api.GET("/orders", handlers.GetOrders(db))
 		api.GET("/order/:code", handlers.GetOrderByCode(db))
 		api.POST("/orders", handlers.CreateAdminOrder(db))
